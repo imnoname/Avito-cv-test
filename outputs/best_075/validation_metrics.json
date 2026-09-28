@@ -1,0 +1,11 @@
+{
+  "metric": "synthetic_pair_brier",
+  "brier_score": 0.07618729086776481,
+  "accuracy_at_0.5": 0.89064,
+  "temperature": 0.9355316755021987,
+  "best_epoch": 5,
+  "seed": 42,
+  "train_word_crops": 150000,
+  "validation_word_crops": 25000,
+  "model_parameters": 97729
+}

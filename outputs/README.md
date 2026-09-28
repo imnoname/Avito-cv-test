@@ -44,6 +44,14 @@ To use CPU inference, append `--cpu`. Training defaults to five epochs, a batch 
 
 TextOCR labels text content and polygons, not whether a crop is upside down. Validation therefore uses held-out source images from TextOCR's official validation split and synthetic 0°/180° pairs. With per-crop standardization, the validation Brier score is 0.06502 and accuracy is 0.89796. This measures the synthetic task; it is not an estimate of the challenge test Brier score. No test images are manually labeled, and the solution uses no external inference API or large language/vision model.
 
+## Best publicly scored submission (0.75382309)
+
+The reproducible Jupyter notebook is [`orientation_solution_best075.ipynb`](orientation_solution_best075.ipynb). It trains the same compact model and generates [`submission.csv`](submission.csv) using the probability-shrink coefficient from the previously evaluated submission. The matching reference checkpoint is `best_075/orientation_model.pt`; the fixed seed is 42.
+
+The score `1 - Brier = 0.75382309` is the organizer feedback for that exact prediction file, not a locally measured score: `test.zip` contains no labels. The probability-shrink coefficient (`0.16957433201954025`) was selected using only aggregate public score feedback, without individual test labels or manual test annotation. The notebook states this explicitly and validates the synthetic TextOCR split separately.
+
+For the notebook, prepare TextOCR files under `work/textocr/` and put the challenge `test.zip` next to that folder (or set `TEXT_OCR_DIR` and `TEST_ZIP`). The notebook expects to be run from the repository root. It checks the output schema, all 20,000 IDs and the probability range, and compares predictions with the reference submission.
+
 ## Test-like augmentation candidate
 
 The challenge ZIP contains images and `sample_submission.csv`, but no orientation labels. Input-only measurements showed that challenge crops have roughly twice the pixel standard deviation of cached TextOCR validation crops after letterboxing. A separate training experiment therefore adds stronger brightness/contrast variation, random downsampling followed by upsampling, and light pixel noise. It uses the same 97,729-parameter CNN and seed 42.
