@@ -1,69 +1,77 @@
-# Text orientation submission
+# Определение поворота текста на 180°
 
-The training source is the [TextOCR Kaggle dataset](https://www.kaggle.com/datasets/robikscube/textocr-text-extraction-from-images-dataset), using the official TextOCR v0.1 images and annotations. TextOCR contains natural scene text with word-level polygons; its upstream data is listed under CC BY 4.0. The dataset has no 0°/180° labels, so the training script keeps near-horizontal word boxes and creates paired examples by rotating each crop 180°. The official train and validation image splits remain separate.
+Решение оценивает вероятность `p_180` для каждого текстового кропа. В этой версии используется компактная CNN, обученная на TextOCR и синтетических парах «исходный кроп / тот же кроп, повёрнутый на 180°».
 
-The classifier is a small depthwise-separable CNN trained from scratch. Each letterboxed grayscale crop is standardized to mean 127 and standard deviation 80 (with clipping) before inference. The model scores every box in both orientations and symmetrizes the two logits, so rotating an input swaps its probability with `1 - p_180`. The exported checkpoint contains 97,729 model parameters and a validation-fitted temperature.
+## Итоговая версия
 
-The implementation uses the open-source libraries PyTorch, NumPy, and Pillow at the pinned versions in `requirements.txt`. No pretrained model is used. The model architecture and training/inference code are implemented in `solution.py`; the only generated labels are the 0°/180° training pairs described above.
+Файл `outputs/submission.csv` содержит 20 000 предсказаний версии, которая получила на платформе `1 − Brier = 0.75382309`. Этот балл сообщён платформой; локально вычислить Brier на тесте нельзя, потому что `test.zip` содержит изображения и `sample_submission.csv`, но не метки ориентации.
 
-## Prepare TextOCR
+Для предсказаний этой версии после модели применялось сжатие вероятностей к 0.5:
 
-The dataset is included under `data/TextOCR/` using Git LFS. Install Git LFS and clone/pull the LFS files first. The image archive is split into parts; reassemble it and copy the annotations into `work/textocr/` with the PowerShell commands in [`data/TextOCR/README.md`](data/TextOCR/README.md). Alternatively, download the three original files directly from the official TextOCR distribution:
-
-- `train_val_images.zip` — https://dl.fbaipublicfiles.com/textvqa/images/train_val_images.zip
-- `TextOCR_0.1_train.json` — https://dl.fbaipublicfiles.com/textvqa/data/textocr/TextOCR_0.1_train.json
-- `TextOCR_0.1_val.json` — https://dl.fbaipublicfiles.com/textvqa/data/textocr/TextOCR_0.1_val.json
-
-```powershell
-New-Item -ItemType Directory -Force work\textocr | Out-Null
-curl.exe -L --retry 10 --retry-all-errors --continue-at - -o work\textocr\train_val_images.zip https://dl.fbaipublicfiles.com/textvqa/images/train_val_images.zip
-curl.exe -L --retry 10 --retry-all-errors --continue-at - -o work\textocr\TextOCR_0.1_train.json https://dl.fbaipublicfiles.com/textvqa/data/textocr/TextOCR_0.1_train.json
-curl.exe -L --retry 10 --retry-all-errors --continue-at - -o work\textocr\TextOCR_0.1_val.json https://dl.fbaipublicfiles.com/textvqa/data/textocr/TextOCR_0.1_val.json
+```text
+p = 0.5 + 0.16957433201954025 * (p_raw - 0.5)
 ```
 
-The image archive is about 6.6 GB. The first training run extracts it and builds a deterministic cache of up to 150,000 training and 25,000 validation word crops. The cache stays under `work/` and can be reused on later runs.
+Коэффициент выбран по агрегированной обратной связи публичного score предыдущей отправки. Индивидуальные метки теста и ручная разметка тестовых изображений не использовались. Эта калибровка описана здесь и в ноутбуке.
 
-## Install and run
+## Обучение и модель
 
-Install PyTorch for the available hardware using the [official PyTorch selector](https://pytorch.org/get-started/locally/), then install the pinned Python dependencies. The verified local setup used PyTorch 2.11.0 with CUDA 12.8 on an RTX 5070.
+- Источник данных: TextOCR v0.1, официальные train и validation split. В репозитории лежит архив изображений по частям и JSON-аннотации в `data/TextOCR/`.
+- Для обучения используются до 150 000 горизонтальных текстовых кропов из train. Для выбора эпохи и температуры используются 25 000 кропов из отдельного validation split.
+- Метки ориентации создаются автоматически поворотом каждого выбранного кропа на 180°.
+- Архитектура — небольшая CNN с depthwise-separable свёртками, 97 729 параметров; модель обучается с нуля.
+- Случайность фиксируется seed 42. Температура выбирается по Brier score на синтетических парах TextOCR. Этот результат не является оценкой Brier на тесте.
+- Используются PyTorch, NumPy и Pillow; точные версии указаны в `outputs/requirements.txt`. Внешние API и большие LLM/VLM не используются.
 
-From the project root:
+## Подготовка данных
+
+Потребуются Python и Git LFS. Получите LFS-файлы при клонировании репозитория, затем выполните инструкции в [`data/TextOCR/README.md`](data/TextOCR/README.md), чтобы собрать архив TextOCR и разместить данные в `work/textocr/`. Можно также скачать оригинальные TextOCR-файлы по ссылкам из этой инструкции.
+
+Положите тестовый `test.zip` рядом с папкой `work/textocr/` либо задайте переменные окружения `TEXT_OCR_DIR` и `TEST_ZIP`.
+
+## Запуск ноутбука
+
+Установите зависимости из корня репозитория и запустите Jupyter:
 
 ```powershell
 python -m pip install -r outputs/requirements.txt
-python outputs/solution.py train --textocr-dir work/textocr --seed 42
-python outputs/solution.py predict `
-  --test-zip "C:\Users\theju\Downloads\test.zip" `
-  --model outputs/orientation_model.pt `
-  --submission-out outputs/submission.csv
+$env:TEXT_OCR_DIR = "work/textocr"
+$env:TEST_ZIP = "C:\path\to\test.zip"
+jupyter lab outputs/orientation_solution_best075.ipynb
 ```
 
-To use CPU inference, append `--cpu`. Training defaults to five epochs, a batch size of 256, and a 150k/25k crop limit. Change those options on machines with different resources. Every stochastic step uses the fixed seed unless `--seed` is changed.
+Выполните все ячейки. Ноутбук обучит модель, создаст `outputs/best_075/orientation_model.pt` и `outputs/submission.csv`, затем проверит формат, количество строк, ID и диапазон вероятностей.
 
-## Validation and limits
+## Запуск из командной строки
 
-TextOCR labels text content and polygons, not whether a crop is upside down. Validation therefore uses held-out source images from TextOCR's official validation split and synthetic 0°/180° pairs. With per-crop standardization, the validation Brier score is 0.06502 and accuracy is 0.89796. This measures the synthetic task; it is not an estimate of the challenge test Brier score. No test images are manually labeled, and the solution uses no external inference API or large language/vision model.
-
-## Test-like augmentation candidate
-
-The challenge ZIP includes images and `sample_submission.csv`, but no orientation labels. Input-only measurements found higher pixel contrast in challenge crops than in TextOCR validation crops. The separate `outputs/train_testlike_candidate.py` experiment adds stronger brightness/contrast variation, random downsampling followed by upsampling, and light pixel noise while keeping the same 97,729-parameter CNN.
-
-The candidate was selected on a fixed synthetic validation suite with clean crops and crops downsampled by 0.25, 0.35, and 0.50 with contrast 1.5. Its pooled Brier was 0.11016 versus 0.12658 for the baseline on this suite. Clean-only validation was worse, so this supports robustness to simulated degradation only; the challenge score is not known until the organizer evaluates the CSV.
-
-After preparing the TextOCR caches with the training command above, reproduce the candidate and test submission with:
+Обучение:
 
 ```powershell
-python outputs/train_testlike_candidate.py
-python outputs/solution.py predict `
-  --test-zip "C:\Users\theju\Downloads\test.zip" `
-  --model outputs/orientation_model_testlike_candidate.pt `
-  --submission-out outputs/submission_testlike_candidate.csv
+python outputs/solution_best075.py train `
+  --textocr-dir work/textocr `
+  --cache-dir work/textocr/cache `
+  --model-out outputs/best_075/orientation_model.pt `
+  --seed 42 --epochs 5 --batch-size 256
 ```
 
-## Files
+Предсказания:
 
-- `solution.py` — deterministic cache preparation, training, and test inference.
-- `orientation_model.pt` — trained weights and calibration temperature.
-- `validation_metrics.json` — best synthetic-pair Brier score, accuracy, and run settings.
-- `submission.csv` — exactly `image_id,p_180` for the 20,000 test boxes.
-- `train_testlike_candidate.py`, `orientation_model_testlike_candidate.pt`, `testlike_candidate_metrics.json`, and `submission_testlike_candidate.csv` — separate augmentation experiment and candidate output.
+```powershell
+python outputs/solution_best075.py predict `
+  --test-zip "C:\path\to\test.zip" `
+  --model outputs/best_075/orientation_model.pt `
+  --submission-out outputs/submission.csv `
+  --probability-shrink 0.16957433201954025
+```
+
+## Состав решения
+
+- `outputs/solution_best075.py` — подготовка кропов, обучение и инференс версии 0.75.
+- `outputs/orientation_solution_best075.ipynb` — ноутбук с пояснениями, запуском обучения и проверками результата.
+- `outputs/best_075/orientation_model.pt` — checkpoint этой модели.
+- `outputs/best_075/validation_metrics.json` — метрики синтетической TextOCR-валидации и параметры обучения.
+- `outputs/submission.csv` — финальные предсказания для тестового набора.
+- `outputs/requirements.txt` — версии зависимостей.
+- `data/TextOCR/` — обучающие изображения и аннотации TextOCR.
+
+Другие экспериментальные модели, CSV и сборки в репозитории не используются.
