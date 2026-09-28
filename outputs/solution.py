@@ -17,6 +17,7 @@ from PIL import Image
 
 IMAGE_WIDTH = 224
 IMAGE_HEIGHT = 64
+NORMALIZED_STD = 80.0
 SEED = 42
 
 
@@ -29,6 +30,21 @@ def letterbox(image: Image.Image, width: int = IMAGE_WIDTH, height: int = IMAGE_
     y = (height - image.height) // 2
     canvas.paste(image, (x, y))
     return np.asarray(canvas, dtype=np.uint8)
+
+
+def standardize_crops(images: np.ndarray) -> np.ndarray:
+    """Normalize each grayscale crop to mean 127 and std 80, rotation-invariantly."""
+    values = np.asarray(images, dtype=np.float32)
+    single = values.ndim == 2
+    if single:
+        values = values[None, ...]
+    if values.ndim != 3:
+        raise ValueError("images must have shape (height, width) or (batch, height, width)")
+    mean = values.mean(axis=(1, 2), keepdims=True)
+    std = values.std(axis=(1, 2), keepdims=True)
+    scale = NORMALIZED_STD / np.maximum(std, 8.0)
+    normalized = np.clip((values - mean) * scale + 127.0, 0.0, 255.0).astype(np.float32)
+    return normalized[0] if single else normalized
 
 
 def p180_from_logits(logit_input: float, logit_rot180: float, temperature: float = 1.0) -> float:
@@ -246,7 +262,8 @@ def _calibrate(model, validation: np.ndarray, batch_size: int, device: str):
     outputs: list[np.ndarray] = []
     with torch.no_grad():
         for start in range(0, len(validation), batch_size):
-            original = torch.from_numpy(np.asarray(validation[start:start + batch_size]).copy())
+            standardized = standardize_crops(validation[start:start + batch_size])
+            original = torch.from_numpy(standardized)
             original = original.to(device=device, dtype=torch.float32).unsqueeze(1).div_(255.0)
             pair = torch.cat((original, original.flip((-2, -1))), dim=0)
             logits = model(pair).float().cpu().numpy()
@@ -362,6 +379,7 @@ def train(args) -> None:
                 "seed": args.seed,
                 "image_width": IMAGE_WIDTH,
                 "image_height": IMAGE_HEIGHT,
+                "input_normalization_std": NORMALIZED_STD,
                 "parameter_count": parameter_count,
             }, output_path)
             metrics_path = output_path.with_name("validation_metrics.json")
@@ -374,6 +392,7 @@ def train(args) -> None:
                 "seed": args.seed,
                 "train_word_crops": len(train_data) // 2,
                 "validation_word_crops": len(val_images),
+                "input_normalization_std": NORMALIZED_STD,
                 "model_parameters": parameter_count,
             }, indent=2), encoding="utf-8")
             model.to(device)
@@ -405,7 +424,8 @@ def predict(args) -> None:
                 with archive.open(image_path) as raw_image:
                     with Image.open(raw_image) as image:
                         originals.append(letterbox(image))
-            original = torch.from_numpy(np.stack(originals)).to(device=device, dtype=torch.float32).unsqueeze(1).div_(255.0)
+            standardized = standardize_crops(np.stack(originals))
+            original = torch.from_numpy(standardized).to(device=device, dtype=torch.float32).unsqueeze(1).div_(255.0)
             pair = torch.cat((original, original.flip((-2, -1))), dim=0)
             with torch.no_grad():
                 logits = model(pair).float().cpu().numpy()

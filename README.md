@@ -2,7 +2,7 @@
 
 The training source is the [TextOCR Kaggle dataset](https://www.kaggle.com/datasets/robikscube/textocr-text-extraction-from-images-dataset), using the official TextOCR v0.1 images and annotations. TextOCR contains natural scene text with word-level polygons; its upstream data is listed under CC BY 4.0. The dataset has no 0°/180° labels, so the training script keeps near-horizontal word boxes and creates paired examples by rotating each crop 180°. The official train and validation image splits remain separate.
 
-The classifier is a small depthwise-separable CNN trained from scratch. Inference scores every box in both orientations and symmetrizes the two logits, so rotating an input swaps its probability with `1 - p_180`. The exported checkpoint contains 97,729 model parameters and a validation-fitted temperature.
+The classifier is a small depthwise-separable CNN trained from scratch. Each letterboxed grayscale crop is standardized to mean 127 and standard deviation 80 (with clipping) before inference. The model scores every box in both orientations and symmetrizes the two logits, so rotating an input swaps its probability with `1 - p_180`. The exported checkpoint contains 97,729 model parameters and a validation-fitted temperature.
 
 The implementation uses the open-source libraries PyTorch, NumPy, and Pillow at the pinned versions in `requirements.txt`. No pretrained model is used. The model architecture and training/inference code are implemented in `solution.py`; the only generated labels are the 0°/180° training pairs described above.
 
@@ -42,12 +42,11 @@ To use CPU inference, append `--cpu`. Training defaults to five epochs, a batch 
 
 ## Validation and limits
 
-TextOCR labels text content and polygons, not whether a crop is upside down. Validation therefore uses held-out source images from TextOCR's official validation split and synthetic 0°/180° pairs. The reported validation Brier score measures that synthetic task; it is not an estimate of the challenge test Brier score. No test images are manually labeled, and the solution uses no external inference API or large language/vision model.
+TextOCR labels text content and polygons, not whether a crop is upside down. Validation therefore uses held-out source images from TextOCR's official validation split and synthetic 0°/180° pairs. With per-crop standardization, the validation Brier score is 0.06502 and accuracy is 0.89796. This measures the synthetic task; it is not an estimate of the challenge test Brier score. No test images are manually labeled, and the solution uses no external inference API or large language/vision model.
 
 ## Files
 
 - `solution.py` — deterministic cache preparation, training, and test inference.
-- `test_solution.py` — unit checks for letterboxing, symmetric probabilities, and CSV probability validation.
 - `orientation_model.pt` — trained weights and calibration temperature.
 - `validation_metrics.json` — best synthetic-pair Brier score, accuracy, and run settings.
 - `submission.csv` — exactly `image_id,p_180` for the 20,000 test boxes.
