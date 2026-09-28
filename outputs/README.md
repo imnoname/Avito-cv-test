@@ -4,10 +4,6 @@ The training source is the [TextOCR Kaggle dataset](https://www.kaggle.com/datas
 
 The classifier is a small depthwise-separable CNN trained from scratch. Inference scores every box in both orientations and symmetrizes the two logits, so rotating an input swaps its probability with `1 - p_180`. The exported checkpoint contains 97,729 model parameters and a validation-fitted temperature.
 
-The first challenge submission scored Brier 0.33786140. Its aggregate score and the first submission's prediction moments were used to shrink the probabilities toward 0.5 with `p_final = 0.5 + 0.169574332 * (p_raw - 0.5)`. This scalar calibration used no per-image test labels. The factor is exposed as `--probability-shrink` and defaults to the value above; set it to `1` to disable shrinkage.
-
-The calibrated submission scored Brier 0.24617691. `prevalence_probe.csv` is an optional diagnostic with constant `p_180 = 0.45`, created by `python outputs/make_prevalence_probe.py --test-zip "C:\Users\theju\Downloads\test.zip"`. If its Brier is `B`, the test positive-class fraction is `(B - 0.2025) / 0.1`. This probe is not the model submission; keep `submission.csv` as the candidate until a recalibration is prepared.
-
 The implementation uses the open-source libraries PyTorch, NumPy, and Pillow at the pinned versions in `requirements.txt`. No pretrained model is used. The model architecture and training/inference code are implemented in `solution.py`; the only generated labels are the 0°/180° training pairs described above.
 
 ## Prepare TextOCR

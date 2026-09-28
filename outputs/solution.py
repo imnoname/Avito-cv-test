@@ -18,8 +18,6 @@ from PIL import Image
 IMAGE_WIDTH = 224
 IMAGE_HEIGHT = 64
 SEED = 42
-# Calibrated from aggregate feedback for the first submission; see README.md.
-DEFAULT_PROBABILITY_SHRINK = 0.16957433201954025
 
 
 def letterbox(image: Image.Image, width: int = IMAGE_WIDTH, height: int = IMAGE_HEIGHT) -> np.ndarray:
@@ -386,8 +384,6 @@ def train(args) -> None:
 
 def predict(args) -> None:
     torch, _ = _load_torch()
-    if not 0.0 <= args.probability_shrink <= 1.0:
-        raise ValueError("--probability-shrink must be in [0, 1]")
     checkpoint = torch.load(args.model, map_location="cpu", weights_only=False)
     model = _make_model()
     model.load_state_dict(checkpoint["state_dict"])
@@ -414,12 +410,10 @@ def predict(args) -> None:
             with torch.no_grad():
                 logits = model(pair).float().cpu().numpy()
             count = len(ids)
-            for i in range(count):
-                raw_probability = p180_from_logits(
-                    float(logits[i]), float(logits[count + i]), temperature
-                )
-                probability = 0.5 + args.probability_shrink * (raw_probability - 0.5)
-                probabilities.append(probability)
+            probabilities.extend(
+                p180_from_logits(float(logits[i]), float(logits[count + i]), temperature)
+                for i in range(count)
+            )
             if (start + len(ids)) % (args.batch_size * 10) == 0 or start + len(ids) == len(image_ids):
                 print(f"predicted {start + len(ids):,}/{len(image_ids):,}", flush=True)
 
@@ -461,10 +455,6 @@ def _parser() -> argparse.ArgumentParser:
     predict_parser.add_argument("--model", default="outputs/orientation_model.pt")
     predict_parser.add_argument("--submission-out", default="outputs/submission.csv")
     predict_parser.add_argument("--batch-size", type=int, default=256)
-    predict_parser.add_argument(
-        "--probability-shrink", type=float, default=DEFAULT_PROBABILITY_SHRINK,
-        help="shrink raw p_180 toward 0.5 (0=constant 0.5, 1=no shrinkage)",
-    )
     predict_parser.add_argument("--cpu", action="store_true")
     predict_parser.set_defaults(run=predict)
     return parser
