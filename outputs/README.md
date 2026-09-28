@@ -44,9 +44,26 @@ To use CPU inference, append `--cpu`. Training defaults to five epochs, a batch 
 
 TextOCR labels text content and polygons, not whether a crop is upside down. Validation therefore uses held-out source images from TextOCR's official validation split and synthetic 0°/180° pairs. With per-crop standardization, the validation Brier score is 0.06502 and accuracy is 0.89796. This measures the synthetic task; it is not an estimate of the challenge test Brier score. No test images are manually labeled, and the solution uses no external inference API or large language/vision model.
 
+## Test-like augmentation candidate
+
+The challenge ZIP contains images and `sample_submission.csv`, but no orientation labels. Input-only measurements showed that challenge crops have roughly twice the pixel standard deviation of cached TextOCR validation crops after letterboxing. A separate training experiment therefore adds stronger brightness/contrast variation, random downsampling followed by upsampling, and light pixel noise. It uses the same 97,729-parameter CNN and seed 42.
+
+The candidate checkpoint was selected on a fixed synthetic validation suite containing clean crops and crops downsampled by 0.25, 0.35, and 0.50 with contrast 1.5. Its pooled Brier was 0.11016 versus 0.12658 for the baseline on that suite. The candidate's clean-only validation Brier was worse, so this result supports robustness to the simulated degradations only; the challenge score is unknown until the organizer evaluates the CSV.
+
+After preparing the TextOCR caches with the training command above, reproduce the candidate and its test submission with:
+
+```powershell
+python outputs/train_testlike_candidate.py
+python outputs/solution.py predict `
+  --test-zip "C:\Users\theju\Downloads\test.zip" `
+  --model outputs/orientation_model_testlike_candidate.pt `
+  --submission-out outputs/submission_testlike_candidate.csv
+```
+
 ## Files
 
 - `solution.py` — deterministic cache preparation, training, and test inference.
 - `orientation_model.pt` — trained weights and calibration temperature.
 - `validation_metrics.json` — best synthetic-pair Brier score, accuracy, and run settings.
 - `submission.csv` — exactly `image_id,p_180` for the 20,000 test boxes.
+- `train_testlike_candidate.py`, `orientation_model_testlike_candidate.pt`, `testlike_candidate_metrics.json`, and `submission_testlike_candidate.csv` — separate test-like augmentation experiment and its candidate output.

@@ -44,9 +44,26 @@ To use CPU inference, append `--cpu`. Training defaults to five epochs, a batch 
 
 TextOCR labels text content and polygons, not whether a crop is upside down. Validation therefore uses held-out source images from TextOCR's official validation split and synthetic 0°/180° pairs. With per-crop standardization, the validation Brier score is 0.06502 and accuracy is 0.89796. This measures the synthetic task; it is not an estimate of the challenge test Brier score. No test images are manually labeled, and the solution uses no external inference API or large language/vision model.
 
+## Test-like augmentation candidate
+
+The challenge ZIP includes images and `sample_submission.csv`, but no orientation labels. Input-only measurements found higher pixel contrast in challenge crops than in TextOCR validation crops. The separate `outputs/train_testlike_candidate.py` experiment adds stronger brightness/contrast variation, random downsampling followed by upsampling, and light pixel noise while keeping the same 97,729-parameter CNN.
+
+The candidate was selected on a fixed synthetic validation suite with clean crops and crops downsampled by 0.25, 0.35, and 0.50 with contrast 1.5. Its pooled Brier was 0.11016 versus 0.12658 for the baseline on this suite. Clean-only validation was worse, so this supports robustness to simulated degradation only; the challenge score is not known until the organizer evaluates the CSV.
+
+After preparing the TextOCR caches with the training command above, reproduce the candidate and test submission with:
+
+```powershell
+python outputs/train_testlike_candidate.py
+python outputs/solution.py predict `
+  --test-zip "C:\Users\theju\Downloads\test.zip" `
+  --model outputs/orientation_model_testlike_candidate.pt `
+  --submission-out outputs/submission_testlike_candidate.csv
+```
+
 ## Files
 
 - `solution.py` — deterministic cache preparation, training, and test inference.
 - `orientation_model.pt` — trained weights and calibration temperature.
 - `validation_metrics.json` — best synthetic-pair Brier score, accuracy, and run settings.
 - `submission.csv` — exactly `image_id,p_180` for the 20,000 test boxes.
+- `train_testlike_candidate.py`, `orientation_model_testlike_candidate.pt`, `testlike_candidate_metrics.json`, and `submission_testlike_candidate.csv` — separate augmentation experiment and candidate output.
