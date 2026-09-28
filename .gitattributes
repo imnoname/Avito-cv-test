@@ -1,0 +1,2 @@
+data/TextOCR/*.json filter=lfs diff=lfs merge=lfs -text
+data/TextOCR/*.zip.part* filter=lfs diff=lfs merge=lfs -text
